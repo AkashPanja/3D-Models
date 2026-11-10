@@ -1,10 +1,10 @@
-// Fig 2 · The light bar's spring hinge. Run: node build.mjs [--light]
+// Fig 2 · The light bar clamp's counterweighted hinge. Run: node build.mjs [--light]
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as k from "../kit/iso-kit.mjs";
 import * as G from "../kit/lathe.mjs";
-import { HINGE, LEG, SPRING, THICK, poseOf, readoutOf } from "./model.mjs";
+import { HINGE, LEG, WEIGHT, THICK, FREE, poseOf, readoutOf } from "./model.mjs";
 import { PANEL_Y, PANEL_LOW, partsOf } from "./parts.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -20,11 +20,9 @@ const POST = { x: 10, y: -6, w: 12, d: 12, r: 1 };
 const BAR = { x: 16, z: 22, r: 15, half: 36 };
 const BAR_FRAME = G.frameOf([BAR.x, 0, BAR.z], [0, 1, 0], [0, 0, 1], [1, 0, 0]);
 const PIN = G.frameOf([HINGE.x, 0, HINGE.z], [0, 1, 0], [0, 0, 1], [1, 0, 0]);
-const KNUCKLES = [[-14, -9.2, "bridge"], [-9, -4.2, "leg"], [4.2, 9, "leg"], [9.2, 14, "bridge"]];
-const COIL = { from: -3.6, to: 3.6, r: 3, turns: 4.5 };
 
 const P = k.fitProjection(
-  [...k.boxCorners({ x: -THICK.max, y: -PANEL_Y, w: THICK.max, d: PANEL_Y * 2 }, PANEL_LOW, 0), [BAR.x + BAR.r, -BAR.half - 2, BAR.z + BAR.r], [BAR.x - BAR.r, BAR.half + 2, BAR.z + BAR.r], [BAR.x + BAR.r, BAR.half + 2, BAR.z - BAR.r], [HINGE.x - HINGE.r, 14, HINGE.z]],
+  [...k.boxCorners({ x: -THICK.max, y: -PANEL_Y, w: THICK.max, d: PANEL_Y * 2 }, PANEL_LOW, 0), [BAR.x + BAR.r, -BAR.half - 2, BAR.z + BAR.r], [BAR.x - BAR.r, BAR.half + 2, BAR.z + BAR.r], [BAR.x + BAR.r, BAR.half + 2, BAR.z - BAR.r], [HINGE.x - WEIGHT.arm - WEIGHT.w, WEIGHT.half, HINGE.z - WEIGHT.arm], [HINGE.x - WEIGHT.arm - WEIGHT.w, WEIGHT.half, HINGE.z + WEIGHT.h]],
   WIDTH,
   HEIGHT,
   { pad: 26, azimuth: AZIMUTH },
@@ -59,26 +57,8 @@ function bar() {
   return out.join("");
 }
 
-function hinge() {
-  const out = [];
-  const knuckle = ([y0, y1, owner]) => S(G.disc(y0, y1, HINGE.r, PIN, P), { tone: owner === "leg" ? "hi" : "mid", crease: "lo" });
-  out.push(knuckle(KNUCKLES[0]), knuckle(KNUCKLES[1]));
-  out.push(S(G.disc(-4.2, 4.2, 1.3, PIN, P), { tone: "mid" }));
-  const coil = k.coil(COIL.from, COIL.to, [HINGE.x, HINGE.z], COIL.r, COIL.turns, "y", P, 24);
-  out.push(L(coil.back, { tone: "mid" }));
-  // the upper arm leaves the coil's top and lies on the bridge, its hook resting on the top face
-  const a = [HINGE.x, COIL.to, HINGE.z + COIL.r];
-  const b = [-38, COIL.to, BRIDGE_H + 0.4];
-  const hook = [-38, COIL.to, BRIDGE_H];
-  out.push(L(k.pathOf([at(a), at(b), at(hook)]), { tone: "lit" }), D([at(hook)], { size: 0.5, tone: "hi" }));
-  out.push(L(coil.front, { tone: "lit" }));
-  out.push(knuckle(KNUCKLES[2]), knuckle(KNUCKLES[3]));
-  out.push(D([at([HINGE.x, 14.02, HINGE.z])], { size: 0.7, tone: "hi" }));
-  out.push(L(G.circleOf(PIN, 14, 1.3, P), { tone: "lo" }));
-  return out.join("");
-}
-
 const CSS = `
+.hb-cg{fill:var(--anatomy-lit);stroke:none}
 .hb-board{fill:var(--anatomy-shade-1);stroke:var(--anatomy-lo);stroke-width:.4}
 `;
 
@@ -87,17 +67,16 @@ const svg = k.figureSvg({
   width: WIDTH,
   height: HEIGHT,
   label:
-    "The clamp of a monitor light bar, seen from behind on a cut piece of the monitor's top edge. A bridge rests on the edge with a lip over the front; at its back a pin hinge carries a leg, and a torsion spring on the pin swings the leg forward until its rubber pad meets the back of the panel, whatever its thickness.",
+    "The clamp of a monitor light bar, seen from behind on a cut piece of the monitor's top edge. A bridge rests on the edge with a lip over the front; at its back a pin hinge carries a bell crank: a leg hanging down and a short arm pointing back with a steel counterweight. Gravity pulls the weight down, which swings the leg forward until its rubber pad meets the back of the panel, whatever its thickness.",
   body: [
     `<style>${CSS}</style>`,
     lip(),
     `<g data-part="panel">${rest.panel}</g>`,
     `<g data-part="pad">${rest.pad}</g>`,
     `<g data-part="leg">${rest.leg}</g>`,
-    `<g data-part="arm">${rest.arm}</g>`,
     bridge(),
     bar(),
-    hinge(),
+    `<g data-part="hinge">${rest.hinge}</g>`,
   ],
 });
 
@@ -112,7 +91,7 @@ const P = ${JSON.stringify(P)};
 const stage = document.querySelector(".iso-stage");
 const svgEl = stage.querySelector("svg");
 const part = (name) => svgEl.querySelector('[data-part="' + name + '"]');
-const el = { panel: part("panel"), pad: part("pad"), leg: part("leg"), arm: part("arm") };
+const el = { panel: part("panel"), pad: part("pad"), leg: part("leg"), hinge: part("hinge") };
 const readout = document.querySelector("[data-readout]");
 const still = matchMedia("(prefers-reduced-motion: reduce)");
 const clampTo = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -122,7 +101,7 @@ function draw(thick) {
   if (t === shown) return;
   shown = t;
   const p = partsOf(t, P);
-  el.panel.innerHTML = p.panel; el.pad.innerHTML = p.pad; el.leg.innerHTML = p.leg; el.arm.innerHTML = p.arm;
+  el.panel.innerHTML = p.panel; el.pad.innerHTML = p.pad; el.leg.innerHTML = p.leg; el.hinge.innerHTML = p.hinge;
   const text = readoutOf(p.pose);
   if (readout.textContent !== text) readout.textContent = text;
   stage.setAttribute("aria-valuenow", String(Math.round(t)));
@@ -174,14 +153,14 @@ const thickest = poseOf(THICK.max);
 const body = k.plateHtml({
   fig: "Fig 2",
   title: "Clamp hinge",
-  hint: "Move across to change the monitor",
+  hint: "Move to change the monitor",
   readout: readoutOf(rest.pose),
   keys: [
-    { mark: "lit", label: "Torsion spring on the hinge pin: one arm on the bridge, one on the leg" },
-    { mark: "raised", label: "Leg and its knuckles: the part that swings" },
+    { mark: "lit", label: "Counterweight, 150 g, with its centre of gravity marked" },
+    { mark: "raised", label: "Leg, hub and arm: one rigid crank that swings on the pin" },
     { mark: "flat", label: "Monitor top edge, cut to show its layers" },
   ],
-  caption: `Seen from behind. The bridge rests on the monitor's top edge and its lip hooks over the front. The leg hangs from a pin at the back of the bridge, and a torsion spring wound around the pin pushes the leg forward until its rubber pad meets the back of the panel. Because the leg swings, one clamp fits any panel from ${THICK.min} to ${THICK.max} mm: the leg stands at ${thin.phi.toFixed(0)}° on the thinnest and ${thickest.phi.toFixed(0)}° on the thickest. The thicker the panel, the further the spring is wound and the harder the pad presses (${thin.grip.toFixed(1)} to ${thickest.grip.toFixed(1)} N), and the lip presses the front with the same force, so the bar can't slide or tip. The spring (unloaded at ${SPRING.free}°, ${SPRING.rate} N·mm per degree) and the ${LEG.len} mm leg are illustrative values for a typical clamp of this kind.`,
+  caption: `Seen from behind. The bridge rests on the monitor's top edge and its lip hooks over the front. At the back of the bridge a pin carries one rigid crank: the leg hangs down and a short arm points back with a ${WEIGHT.weight * 100} g steel weight ${WEIGHT.arm} mm behind the pin. With nothing in the way the crank would hang with its centre of gravity straight under the pin, the leg swung ${FREE.toFixed(0)}\u00b0 forward. The panel stops it first, so the centre of gravity stays behind the pin (${thin.behind.toFixed(0)} mm on a ${THICK.min} mm panel, ${thickest.behind.toFixed(0)} mm on a ${THICK.max} mm one) and gravity keeps turning the crank: the pad presses the back of the panel and the lip presses the front with the same force, ${thin.grip.toFixed(2)} to ${thickest.grip.toFixed(2)} N. Unlike a spring, the weight presses almost equally on thin and thick monitors and never wears out. The weight, arm and ${LEG.len} mm leg are illustrative values.`,
   body: `<div class="iso-stage" tabindex="0" role="slider" aria-label="Monitor thickness: arrow keys change the panel the clamp sits on" aria-valuemin="${THICK.min}" aria-valuemax="${THICK.max}" aria-valuenow="${THICK.rest}">${svg}</div>`,
 });
 

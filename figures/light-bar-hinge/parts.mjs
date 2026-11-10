@@ -1,8 +1,8 @@
 // Parts that move with the panel thickness. The build draws them at rest and the
 // page redraws them from the same functions (imports and exports stripped).
 import { iso, pathOf, slabOf, solidSvg, lineSvg, dotsSvg } from "../kit/iso-kit.mjs";
-import { frameOf, prismOf } from "../kit/lathe.mjs";
-import { HINGE, LEG, PAD, poseOf } from "./model.mjs";
+import { frameOf, prismOf, disc, circleOf } from "../kit/lathe.mjs";
+import { HINGE, LEG, PAD, WEIGHT, poseOf } from "./model.mjs";
 
 export const PANEL_Y = 34;
 export const PANEL_LOW = -66;
@@ -56,15 +56,38 @@ export function legSvg(phi, P) {
   return solidSvg(plate, { tone: "hi", crease: "lo" }) + lineSvg(label, { tone: "lo" }) + lineSvg(rules, { tone: "faint", free: true });
 }
 
-// The spring's lower arm lies on the leg's outer face and pushes it toward the panel.
-export function armSvg(phi, P) {
-  const a = legPoint(phi, 4.2, -LEG.thick / 2 - 0.5, 1.5);
-  const b = legPoint(phi, 15, -LEG.thick / 2 - 0.5, 1.5);
-  const hook = legPoint(phi, 15, -LEG.thick / 2, 1.5);
-  return lineSvg(pathOf([iso(a, P), iso(b, P), iso(hook, P)]), { tone: "lit" }) + dotsSvg([iso(hook, P)], { size: 0.5, tone: "hi" });
+// The hinge: bridge knuckles at the ends, leg knuckles inside them, and the leg's
+// centre hub, from which the counterweight arm points back. Knuckles are drawn far
+// (−y) to near (+y); the weight, furthest back and so nearest the viewer, goes last.
+export const KNUCKLES = [[-14, -9.2, "bridge"], [-9, -4.6, "leg"], [4.6, 9, "leg"], [9.2, 14, "bridge"]];
+
+export function hingeSvg(phi, P) {
+  const F = HINGE_FRAME;
+  const knuckle = ([y0, y1, owner]) => solidSvg(disc(y0, y1, HINGE.r, F, P), { tone: owner === "leg" ? "hi" : "mid", crease: "lo" });
+  const out = [knuckle(KNUCKLES[0]), knuckle(KNUCKLES[1])];
+  out.push(solidSvg(disc(-4.4, 4.4, HINGE.r + 0.6, F, P), { tone: "hi", crease: "lo" }));
+  const arm = prismOf(F, legRect(phi, -1.6, 1.6, -WEIGHT.arm + WEIGHT.w / 2 - 0.2, -HINGE.r), -3.4, 3.4, P);
+  out.push(solidSvg(arm, { tone: "hi", crease: "lo" }));
+  out.push(knuckle(KNUCKLES[2]), knuckle(KNUCKLES[3]));
+  out.push(dotsSvg([iso([HINGE.x, 14.02, HINGE.z], P)], { size: 0.7, tone: "hi" }));
+  out.push(lineSvg(circleOf(F, 14, 1.3, P), { tone: "lo" }));
+  // the counterweight: a steel block with two cap screws holding it to the arm
+  const o0 = -WEIGHT.arm - WEIGHT.w / 2;
+  const o1 = -WEIGHT.arm + WEIGHT.w / 2;
+  const block = prismOf(F, legRect(phi, -WEIGHT.h / 2, WEIGHT.h / 2, o0, o1), -WEIGHT.half, WEIGHT.half, P);
+  const face = WEIGHT.half + 0.02;
+  // its centre of gravity, marked on the near face as the usual quartered circle
+  const c = legPoint(phi, 0, -WEIGHT.arm, face);
+  const ring = (r, a0, a1, n) => Array.from({ length: n + 1 }, (_, i) => { const a = a0 + ((a1 - a0) * i) / n; return iso([c[0] + r * Math.cos(a), face, c[2] + r * Math.sin(a)], P); });
+  const quarter = (a0) => pathOf([iso(c, P), ...ring(2.6, a0, a0 + Math.PI / 2, 8)], true);
+  const mark = `<path class="hb-cg" d="${quarter(0)}${quarter(Math.PI)}"/>` + lineSvg(pathOf(ring(2.6, 0, Math.PI * 2, 32), true), { tone: "lit" });
+  const screws = [-6, 6].map((y) => iso(legPoint(phi, -WEIGHT.h / 2 - 0.02, -WEIGHT.arm, y), P));
+  out.push(solidSvg(block, { tone: "hi", lit: true, crease: "lo" }) + mark);
+  out.push(dotsSvg(screws, { size: 0.55, tone: "hi" }));
+  return out.join("");
 }
 
 export function partsOf(thick, P) {
   const pose = poseOf(thick);
-  return { pose, panel: panelSvg(thick, P), pad: padSvg(pose.phi, P), leg: legSvg(pose.phi, P), arm: armSvg(pose.phi, P) };
+  return { pose, panel: panelSvg(thick, P), pad: padSvg(pose.phi, P), leg: legSvg(pose.phi, P), hinge: hingeSvg(pose.phi, P) };
 }
